@@ -145,15 +145,21 @@ jobs:
           sudo cp -a /tmp/vesktop_extract/* /mnt/void/
           echo "✅ Vesktop extraído e integrado en el rootfs de Void."
 
-      - name: Download kernel and DTB (hexdump0815)
+      - name: Download and extract prebuilt kpart (hexdump0815)
         run: |
-          # Descarga el kernel y DTB específicos para Kappa
-          wget -q "$KERNEL_URL" -O /tmp/Image || { echo "Fallo al descargar el kernel. Verifica la URL."; exit 1; }
-          wget -q "$DTB_URL" -O /tmp/mt8183-kukui-jacuzzi-kappa.dtb || { echo "Fallo al descargar el DTB. Verifica la URL."; exit 1; }
-          # Copiar al chroot para que mkdepthcharge los use
-          sudo cp /tmp/Image /mnt/void/boot/Image
-          sudo cp /tmp/mt8183-kukui-jacuzzi-kappa.dtb /mnt/void/boot/
-          echo "Kernel y DTB colocados en /boot dentro del chroot."
+          set -e
+          KPART_URL="https://github.com/hexdump0815/linux-mainline-mediatek-mt81xx-kernel/releases/download/6.18.34-stb-cbm%2B/6.18.34-stb-cbm%2B.tar.gz"
+          wget -q "$KPART_URL" -O /tmp/kukui-kernel.tar.gz
+          mkdir -p /tmp/kukui-extract
+          tar xzf /tmp/kukui-kernel.tar.gz -C /tmp/kukui-extract
+          # El tar contiene un directorio 'boot' con el archivo .kpart
+          KPART_FILE=$(find /tmp/kukui-extract -name "*.kpart*" | head -n 1)
+          if [ -z "$KPART_FILE" ]; then
+            echo "❌ No se encontró ningún archivo .kpart dentro del tar.gz"
+            exit 1
+          fi
+          sudo cp "$KPART_FILE" /mnt/void/boot/void-boot.kpart
+          echo "✅ kpart preconstruido copiado a /boot/void-boot.kpart"
 
       - name: Generate initramfs with Plymouth (dracut)
         run: |
