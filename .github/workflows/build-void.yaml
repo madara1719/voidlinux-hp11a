@@ -161,17 +161,6 @@ jobs:
           sudo cp "$KPART_FILE" /mnt/void/boot/void-boot.kpart
           echo "✅ kpart preconstruido copiado a /boot/void-boot.kpart"
 
-      - name: Generate initramfs with Plymouth (dracut)
-        run: |
-          sudo chroot /mnt/void /bin/bash -c '
-            set -e
-            # Asegurar que el tema de Plymouth esté configurado (opcional, usa el tema por defecto)
-            plymouth-set-default-theme -R 2>/dev/null || true
-            # Generar initramfs con dracut, forzando la inclusión de plymouth
-            dracut --force --add "plymouth" /boot/initramfs-void.img $(uname -r 2>/dev/null || echo "6.1.51")
-            echo "initramfs generado."
-          '
-
       - name: Create .kpart using mkdepthcharge
         run: |
           sudo chroot /mnt/void /bin/bash -c "
