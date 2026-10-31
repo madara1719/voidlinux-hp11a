@@ -53,21 +53,18 @@ jobs:
         run: |
           sudo chroot /mnt/void /bin/bash -c '
             set -e
-            # Sincronizar e instalar sistema base
+            # 1. Sincronizar XBPS e instalar el sistema base (con -y para no interactuar)
             xbps-install -Syu xbps
-            xbps-install -S base-system
+            xbps-install -y base-system
 
-            # --- Añadir repositorios de terceros ---
-            # Hyprland (sofijacom) - rama aarch64-glibc
+            # 2. Añadir SOLO el repositorio de Hyprland (el único válido para aarch64)
             echo "repository=https://raw.githubusercontent.com/sofijacom/hyprland-void/repository-aarch64-glibc" > /etc/xbps.d/hyprland-void.conf
-            # Brave Origin (sofijacom)
-            printf "repository=https://github.com/sofijacom/void-package/releases/latest/download\n" > /etc/xbps.d/sofijacom-void-repository.conf
-            # Noctalia Shell (repositorio comunitario voiders.dev)
-            echo "repository=https://repo.voiders.dev" > /etc/xbps.d/10-voiders-community.conf
 
-            # Refrescar repositorios y aceptar huellas (se asume "y" para automatización)
-            xbps-install -S --yes
-            echo "Repositorios configurados."
+            # 3. Sincronizar repositorios y aceptar automáticamente la clave de Hyprland
+            # "echo y" responde al prompt de importación de la clave pública
+            echo y | xbps-install -S
+
+            echo "Sistema base y repositorio de Hyprland configurados."
           '
 
       - name: Install full software stack inside chroot
