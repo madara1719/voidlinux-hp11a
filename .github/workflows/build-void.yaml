@@ -71,11 +71,10 @@ jobs:
         run: |
           sudo chroot /mnt/void /bin/bash -c '
             set -e
-            # Instalación del stack completo
+            # Instalación del stack completo (sin Noctalia por ahora)
             xbps-install -y \
               wayland mesa-dri \
               lxqt-wayland-session lxqt-session \
-              noctalia-shell \
               hyprland xdg-desktop-portal-hyprland \
               imv \
               gparted \
