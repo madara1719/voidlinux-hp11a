@@ -71,7 +71,7 @@ jobs:
               wget curl git python3 python3-pip \
               linux-firmware \
               linux-firmware-network \
-              libgtk-3 libnotify libnss libxss libxtst xdg-utils libatspi libuuid libsecret
+              gtk+3 libnotify nss libXScrnSaver libXtst xdg-utils at-spi2-core libuuid libsecret
 
             # Habilitar servicios esenciales
             ln -s /etc/sv/seatd /etc/runit/runsvdir/default/ 2>/dev/null || true
