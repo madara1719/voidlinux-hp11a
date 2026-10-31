@@ -1,24 +1,15 @@
 name: Build Void Linux Image for HP Chromebook 11a (Kappa)
 
 on:
-  workflow_dispatch: # Permite iniciar la construcción manualmente desde la pestaña Actions
+  workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
     env:
-      # --- Variables de Configuración Clave ---
-      # UUID fijo para la partición raíz. Cámbialo si lo deseas, pero mantenlo consistente.
       ROOT_UUID: "a1b2c3d4-e5f6-7890-1234-567890abcdef"
-      # Tamaño de la imagen final (ej. 4G). Ajusta según tu eMMC.
       IMAGE_SIZE: "4G"
-      # URL del rootfs de Void (ajusta la fecha a la versión más reciente que desees)
       VOID_ROOTFS_URL: "https://repo-default.voidlinux.org/live/current/void-aarch64-ROOTFS-20250202.tar.xz"
-      # URL del kernel y DTB de hexdump0815 (REEMPLAZA con la URL exacta del release que uses)
-      # Ejemplo basado en el release 230917-01 para Kukui; verifica los assets disponibles.
-      KERNEL_URL: "https://github.com/hexdump0815/imagebuilder/releases/download/230917-01/vmlinuz-6.1.51-kukui"
-      DTB_URL: "https://github.com/hexdump0815/imagebuilder/releases/download/230917-01/mt8183-kukui-jacuzzi-kappa.dtb"
-      # Nombre del archivo de imagen final
       IMAGE_NAME: "void-linux-kappa-lxqt-wayland.img"
 
     steps:
@@ -28,7 +19,7 @@ jobs:
       - name: Install host dependencies (QEMU & tools)
         run: |
           sudo apt-get update
-          sudo apt-get install -y qemu-user-static binfmt-support wget xz-utils gdisk dosfstools e2fsprogs
+          sudo apt-get install -y qemu-user-static binfmt-support wget xz-utils gdisk dosfstools e2fsprogs dpkg-dev jq
 
       - name: Download Void Linux ROOTFS (aarch64)
         run: |
@@ -53,17 +44,11 @@ jobs:
         run: |
           sudo chroot /mnt/void /bin/bash -c '
             set -e
-            # 1. Sincronizar XBPS e instalar el sistema base (con -y para no interactuar)
             xbps-install -Syu xbps
             xbps-install -y base-system
 
-            # 2. Añadir SOLO el repositorio de Hyprland (el único válido para aarch64)
             echo "repository=https://raw.githubusercontent.com/sofijacom/hyprland-void/repository-aarch64-glibc" > /etc/xbps.d/hyprland-void.conf
-
-            # 3. Sincronizar repositorios y aceptar automáticamente la clave de Hyprland
-            # "echo y" responde al prompt de importación de la clave pública
             echo y | xbps-install -S
-
             echo "Sistema base y repositorio de Hyprland configurados."
           '
 
@@ -71,7 +56,7 @@ jobs:
         run: |
           sudo chroot /mnt/void /bin/bash -c '
             set -e
-            # Instalación del stack base (sin depthcharge-tools)
+            # Instalación del stack completo (Añadidas dependencias de Vesktop)
             xbps-install -y \
               wayland mesa-dri \
               lxqt-wayland-session lxqt-session \
@@ -84,9 +69,9 @@ jobs:
               plymouth plymouth-data \
               dracut \
               wget curl git python3 python3-pip \
-              u-boot-tools \ 
               linux-firmware \
-              linux-firmware-network
+              linux-firmware-network \
+              libgtk-3 libnotify libnss libxss libxtst xdg-utils libatspi libuuid libsecret
 
             # Habilitar servicios esenciales
             ln -s /etc/sv/seatd /etc/runit/runsvdir/default/ 2>/dev/null || true
@@ -104,48 +89,28 @@ jobs:
           command = "tuigreet --remember -t --remember-session --cmd startlxqtwayland"
           user = "greeter"
           EOF
-          # Crear usuario "greeter" si no existe (opcional, pero recomendado)
+
           sudo chroot /mnt/void /bin/bash -c '
             id -u greeter &>/dev/null || useradd -m -G video,input greeter
-            # Establecer una contraseña trivial solo para pruebas; cámbiala en el primer arranque
             echo "greeter:changeme" | chpasswd 2>/dev/null || true
           '
           echo "greetd configurado para iniciar LXQt Wayland."
 
-      - name: Install dependencies for Vesktop handling
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y dpkg-dev jq
-
       - name: Handle Vesktop installation (arm64 .deb)
         run: |
           set -e
-          # 1. Obtener la URL del asset arm64 usando jq (mucho más fiable que grep/cut)
           VESKTOP_DEB_URL=$(curl -s https://api.github.com/repos/Vencord/Vesktop/releases/latest | jq -r '.assets[] | select(.name | endswith("_arm64.deb")) | .browser_download_url')
           
           if [ -z "$VESKTOP_DEB_URL" ] || [ "$VESKTOP_DEB_URL" = "null" ]; then
-            echo "❌ No se pudo encontrar el asset .deb para arm64 en el último release."
+            echo "❌ No se pudo encontrar el asset .deb para arm64."
             exit 1
           fi
           
-          echo "✅ URL encontrada: $VESKTOP_DEB_URL"
           wget -q "$VESKTOP_DEB_URL" -O vesktop.deb
-          
-          # 2. Extraer el .deb. Usamos dpkg-deb, con fallback a ar+tar por si acaso.
           sudo mkdir -p /tmp/vesktop_extract
-          if command -v dpkg-deb &> /dev/null; then
-            sudo dpkg-deb -x vesktop.deb /tmp/vesktop_extract
-          else
-            echo "dpkg-deb no encontrado, usando ar y tar como fallback..."
-            cd /tmp/vesktop_extract
-            ar x /home/runner/work/.../vesktop.deb  # Ajusta la ruta si es necesario
-            tar xf data.tar.*
-            cd -
-          fi
-          
-          # 3. Copiar el contenido al chroot de Void
+          sudo dpkg-deb -x vesktop.deb /tmp/vesktop_extract
           sudo cp -a /tmp/vesktop_extract/* /mnt/void/
-          echo "✅ Vesktop extraído e integrado en el rootfs de Void."
+          echo "✅ Vesktop extraído e integrado."
 
       - name: Download and extract prebuilt kpart (hexdump0815)
         run: |
@@ -154,67 +119,48 @@ jobs:
           wget -q "$KPART_URL" -O /tmp/kukui-kernel.tar.gz
           mkdir -p /tmp/kukui-extract
           tar xzf /tmp/kukui-kernel.tar.gz -C /tmp/kukui-extract
+          
           KPART_FILE=$(find /tmp/kukui-extract -name "*.kpart*" | head -n 1)
           if [ -z "$KPART_FILE" ]; then
             echo "❌ No se encontró ningún archivo .kpart dentro del tar.gz"
             exit 1
           fi
+          
           sudo cp "$KPART_FILE" /mnt/void/boot/void-boot.kpart
-          echo "✅ kpart preconstruido copiado a /boot/void-boot.kpart"
-
-      # --- AQUÍ NO DEBE HABER NINGÚN PASO DE mkdepthcharge NI DE dracut ---
-
-
-      - name: Create .kpart using mkdepthcharge
-        run: |
-          sudo chroot /mnt/void /bin/bash -c "
-            set -e
-            # La cmdline incluye los parámetros para Plymouth y el UUID de la raíz
-            mkdepthcharge -o /boot/void-boot.kpart \
-              --arch arm64 \
-              --compress lzma \
-              --cmdline 'console=tty0 root=UUID=${ROOT_UUID} rootwait rw quiet splash plymouth.enable=1' \
-              /boot/Image \
-              /boot/initramfs-void.img \
-              /boot/mt8183-kukui-jacuzzi-kappa.dtb
-            echo 'kpart generado.'
-          "
+          echo "✅ kpart preconstruido copiado."
 
       - name: Assemble final disk image (GPT + partitions)
         run: |
           set -e
-          # 1. Crear archivo de imagen vacío
+          # 1. Crear archivo de imagen
           dd if=/dev/zero of="$IMAGE_NAME" bs=1M count=0 seek=$(numfmt --from=iec $IMAGE_SIZE | numfmt --to-unit=1048576) status=progress
 
           # 2. Crear tabla de particiones GPT
-          # Partición 1: Kernel (ChromeOS kernel, tipo 66), 32 MiB
-          # Partición 2: Rootfs (Linux filesystem), resto del disco
           sgdisk -Z "$IMAGE_NAME"
           sgdisk -n 1:2048:67583 -t 1:66 -c 1:"Kernel" "$IMAGE_NAME"
           sgdisk -n 2:67584:0 -t 2:8300 -c 2:"Rootfs" "$IMAGE_NAME"
 
-          # 3. Configurar loop device para montar las particiones
+          # 3. Configurar loop device
           LOOP_DEV=$(sudo losetup --show -fP "$IMAGE_NAME")
           echo "Loop device: $LOOP_DEV"
 
-          # 4. Escribir el kpart en la partición 1
+          # 4. Escribir el kpart
           sudo dd if=/mnt/void/boot/void-boot.kpart of="${LOOP_DEV}p1" bs=1M status=progress conv=fsync
 
-          # 5. Formatear la partición 2 como ext4 con el UUID fijo
+          # 5. Formatear y copiar rootfs
           sudo mkfs.ext4 -U "$ROOT_UUID" -F "${LOOP_DEV}p2"
-
-          # 6. Montar la partición 2 y copiar el rootfs personalizado
           sudo mkdir -p /mnt/final_root
           sudo mount "${LOOP_DEV}p2" /mnt/final_root
           sudo cp -a /mnt/void/* /mnt/final_root/
-          # Limpiar archivos temporales dentro del rootfs copiado
+          
+          # Limpieza
           sudo rm -f /mnt/final_root/boot/void-boot.kpart
           sudo umount /mnt/final_root
 
-          # 7. Aplicar los atributos GPT necesarios para Depthcharge
+          # 6. Atributos para Depthcharge
           sudo sgdisk -A 1:or:11f000000000000 "$IMAGE_NAME"
 
-          # 8. Limpiar loop device
+          # 7. Limpieza final
           sudo losetup -d "$LOOP_DEV"
           echo "Imagen final creada: $IMAGE_NAME"
 
