@@ -110,20 +110,40 @@ jobs:
           '
           echo "greetd configurado para iniciar LXQt Wayland."
 
+      - name: Install dependencies for Vesktop handling
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y dpkg-dev jq
+
       - name: Handle Vesktop installation (arm64 .deb)
         run: |
-          # Descargar el .deb de Vesktop para arm64
-          VESKTOP_DEB_URL=$(curl -s https://api.github.com/repos/Vencord/Vesktop/releases/latest | grep "vesktop_.*_arm64.deb" | cut -d : -f 2,3 | tr -d \")
-          if [ -z "$VESKTOP_DEB_URL" ]; then
-            echo "No se pudo encontrar el .deb de Vesktop; omitiendo."
-            exit 0
+          set -e
+          # 1. Obtener la URL del asset arm64 usando jq (mucho más fiable que grep/cut)
+          VESKTOP_DEB_URL=$(curl -s https://api.github.com/repos/Vencord/Vesktop/releases/latest | jq -r '.assets[] | select(.name | endswith("_arm64.deb")) | .browser_download_url')
+          
+          if [ -z "$VESKTOP_DEB_URL" ] || [ "$VESKTOP_DEB_URL" = "null" ]; then
+            echo "❌ No se pudo encontrar el asset .deb para arm64 en el último release."
+            exit 1
           fi
+          
+          echo "✅ URL encontrada: $VESKTOP_DEB_URL"
           wget -q "$VESKTOP_DEB_URL" -O vesktop.deb
-          # Extraer el contenido del .deb dentro del chroot
+          
+          # 2. Extraer el .deb. Usamos dpkg-deb, con fallback a ar+tar por si acaso.
           sudo mkdir -p /tmp/vesktop_extract
-          sudo dpkg-deb -x vesktop.deb /tmp/vesktop_extract
+          if command -v dpkg-deb &> /dev/null; then
+            sudo dpkg-deb -x vesktop.deb /tmp/vesktop_extract
+          else
+            echo "dpkg-deb no encontrado, usando ar y tar como fallback..."
+            cd /tmp/vesktop_extract
+            ar x /home/runner/work/.../vesktop.deb  # Ajusta la ruta si es necesario
+            tar xf data.tar.*
+            cd -
+          fi
+          
+          # 3. Copiar el contenido al chroot de Void
           sudo cp -a /tmp/vesktop_extract/* /mnt/void/
-          echo "Vesktop instalado."
+          echo "✅ Vesktop extraído e integrado en el rootfs de Void."
 
       - name: Download kernel and DTB (hexdump0815)
         run: |
