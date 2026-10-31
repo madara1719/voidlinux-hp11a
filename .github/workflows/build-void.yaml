@@ -152,7 +152,6 @@ jobs:
           wget -q "$KPART_URL" -O /tmp/kukui-kernel.tar.gz
           mkdir -p /tmp/kukui-extract
           tar xzf /tmp/kukui-kernel.tar.gz -C /tmp/kukui-extract
-          # El tar contiene un directorio 'boot' con el archivo .kpart
           KPART_FILE=$(find /tmp/kukui-extract -name "*.kpart*" | head -n 1)
           if [ -z "$KPART_FILE" ]; then
             echo "❌ No se encontró ningún archivo .kpart dentro del tar.gz"
@@ -160,6 +159,9 @@ jobs:
           fi
           sudo cp "$KPART_FILE" /mnt/void/boot/void-boot.kpart
           echo "✅ kpart preconstruido copiado a /boot/void-boot.kpart"
+
+      # --- AQUÍ NO DEBE HABER NINGÚN PASO DE mkdepthcharge NI DE dracut ---
+
 
       - name: Create .kpart using mkdepthcharge
         run: |
