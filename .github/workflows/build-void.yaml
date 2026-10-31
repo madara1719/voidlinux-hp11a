@@ -71,7 +71,7 @@ jobs:
         run: |
           sudo chroot /mnt/void /bin/bash -c '
             set -e
-            # Instalación del stack completo (sin Noctalia por ahora)
+            # Instalación del stack base (sin depthcharge-tools)
             xbps-install -y \
               wayland mesa-dri \
               lxqt-wayland-session lxqt-session \
@@ -82,14 +82,14 @@ jobs:
               greetd tuigreet \
               seatd \
               plymouth plymouth-data \
-              depthcharge-tools \
               dracut \
-              wget curl
+              wget curl git python3 python3-pip \
+              u-boot-tools
 
-            # Habilitar servicios esenciales para Wayland y login gráfico
+            # Habilitar servicios esenciales
             ln -s /etc/sv/seatd /etc/runit/runsvdir/default/ 2>/dev/null || true
             ln -s /etc/sv/greetd /etc/runit/runsvdir/default/ 2>/dev/null || true
-            echo "Stack instalado y servicios habilitados."
+            echo "Stack base instalado."
           '
 
       - name: Configure greetd and LXQt Wayland session
