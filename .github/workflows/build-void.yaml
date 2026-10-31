@@ -137,30 +137,38 @@ jobs:
 
           # 2. Crear tabla de particiones GPT
           sgdisk -Z "$IMAGE_NAME"
-          sgdisk -n 1:2048:67583 -t 1:66 -c 1:"Kernel" "$IMAGE_NAME"
+          # Usamos FE3A para el tipo ChromeOS Kernel (reconocido por Depthcharge)
+          sgdisk -n 1:2048:67583 -t 1:FE3A -c 1:"Kernel" "$IMAGE_NAME"
           sgdisk -n 2:67584:0 -t 2:8300 -c 2:"Rootfs" "$IMAGE_NAME"
 
           # 3. Configurar loop device
           LOOP_DEV=$(sudo losetup --show -fP "$IMAGE_NAME")
           echo "Loop device: $LOOP_DEV"
 
-          # 4. Escribir el kpart
+          # 4. Escribir el kpart en la partición 1
           sudo dd if=/mnt/void/boot/void-boot.kpart of="${LOOP_DEV}p1" bs=1M status=progress conv=fsync
 
-          # 5. Formatear y copiar rootfs
+          # 5. Formatear la partición 2
           sudo mkfs.ext4 -U "$ROOT_UUID" -F "${LOOP_DEV}p2"
+
+          # 6. DESMONTAR LOS PSEUDO-FILESYSTEMS ANTES DE COPIAR
+          sudo umount -R /mnt/void/dev || true
+          sudo umount -R /mnt/void/proc || true
+          sudo umount -R /mnt/void/sys || true
+
+          # 7. Montar la partición 2 y copiar el rootfs
           sudo mkdir -p /mnt/final_root
           sudo mount "${LOOP_DEV}p2" /mnt/final_root
           sudo cp -a /mnt/void/* /mnt/final_root/
-          
-          # Limpieza
+
+          # 8. Limpiar archivos temporales dentro del rootfs copiado
           sudo rm -f /mnt/final_root/boot/void-boot.kpart
           sudo umount /mnt/final_root
 
-          # 6. Atributos para Depthcharge
+          # 9. Aplicar los atributos GPT necesarios para Depthcharge
           sudo sgdisk -A 1:or:11f000000000000 "$IMAGE_NAME"
 
-          # 7. Limpieza final
+          # 10. Limpiar loop device
           sudo losetup -d "$LOOP_DEV"
           echo "Imagen final creada: $IMAGE_NAME"
 
