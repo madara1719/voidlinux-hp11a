@@ -137,7 +137,6 @@ jobs:
 
           # 2. Crear tabla de particiones GPT
           sgdisk -Z "$IMAGE_NAME"
-          # Usamos FE3A para el tipo ChromeOS Kernel (reconocido por Depthcharge)
           sgdisk -n 1:2048:67583 -t 1:FE3A -c 1:"Kernel" "$IMAGE_NAME"
           sgdisk -n 2:67584:0 -t 2:8300 -c 2:"Rootfs" "$IMAGE_NAME"
 
@@ -151,15 +150,17 @@ jobs:
           # 5. Formatear la partición 2
           sudo mkfs.ext4 -U "$ROOT_UUID" -F "${LOOP_DEV}p2"
 
-          # 6. DESMONTAR LOS PSEUDO-FILESYSTEMS ANTES DE COPIAR
-          sudo umount -R /mnt/void/dev || true
-          sudo umount -R /mnt/void/proc || true
-          sudo umount -R /mnt/void/sys || true
+          # 6. DESMONTAR PSEUDO-FILESYSTEMS (forzando si es necesario)
+          sudo umount -R /mnt/void/dev 2>/dev/null || sudo umount -l /mnt/void/dev 2>/dev/null || true
+          sudo umount -R /mnt/void/proc 2>/dev/null || sudo umount -l /mnt/void/proc 2>/dev/null || true
+          sudo umount -R /mnt/void/sys 2>/dev/null || sudo umount -l /mnt/void/sys 2>/dev/null || true
 
-          # 7. Montar la partición 2 y copiar el rootfs
+          # 7. Montar la partición 2 y copiar el rootfs con rsync
           sudo mkdir -p /mnt/final_root
           sudo mount "${LOOP_DEV}p2" /mnt/final_root
-          sudo cp -a /mnt/void/* /mnt/final_root/
+          
+          # rsync excluye /proc, /sys, /dev y /tmp para evitar copiar archivos especiales
+          sudo rsync -aHAX --exclude={/proc/*,/sys/*,/dev/*,/tmp/*} /mnt/void/ /mnt/final_root/
 
           # 8. Limpiar archivos temporales dentro del rootfs copiado
           sudo rm -f /mnt/final_root/boot/void-boot.kpart
